@@ -35,10 +35,13 @@ func Dashboard(s stats.Snapshot, width int) string {
 		width = 80
 	}
 
-	systemBox := BoxStyle.Width(min(width-2, 80)).Render(renderSystemSection(s))
-	procBox := BoxStyle.Width(min(width-2, 80)).Render(renderProcessSection(s))
+	boxW := min(width-2, 100)
 
-	return systemBox + "\n\n" + procBox
+	systemBox := BoxStyle.Width(boxW).Render(renderSystemSection(s))
+	hostBox := BoxStyle.Width(boxW).Render(renderHostSection(s))
+	procBox := BoxStyle.Width(boxW).Render(renderProcessSection(s))
+
+	return systemBox + "\n\n" + hostBox + "\n\n" + procBox
 }
 
 func renderSystemSection(s stats.Snapshot) string {
@@ -54,6 +57,85 @@ func renderSystemSection(s stats.Snapshot) string {
 	return strings.Join(lines, "\n")
 }
 
+func renderHostSection(s stats.Snapshot) string {
+	h := s.Host
+
+	name := h.ComputerName
+	if name == "" {
+		name = "n/a"
+	}
+	host := h.Hostname
+	if host == "" {
+		host = "n/a"
+	}
+
+	osLine := "n/a"
+	if h.OSVersion != "" && h.OSBuild != "" {
+		osLine = fmt.Sprintf("macOS %s (%s)  %s", h.OSVersion, h.OSBuild, h.Arch)
+	} else if h.OSVersion != "" {
+		osLine = fmt.Sprintf("macOS %s  %s", h.OSVersion, h.Arch)
+	} else if h.Arch != "" {
+		osLine = h.Arch
+	}
+
+	cpuLine := "n/a"
+	if h.CPUModel != "" && h.CPUCores > 0 {
+		cpuLine = fmt.Sprintf("%s (%d cores)", h.CPUModel, h.CPUCores)
+	} else if h.CPUModel != "" {
+		cpuLine = h.CPUModel
+	} else if h.CPUCores > 0 {
+		cpuLine = fmt.Sprintf("%d cores", h.CPUCores)
+	}
+
+	gpuLine := h.GPUModel
+	if gpuLine == "" {
+		gpuLine = "n/a"
+	}
+
+	pwr := h.PowerSource
+	if pwr == "" {
+		pwr = "n/a"
+	}
+
+	ipLine := formatIPLine(h.IPs)
+	if ipLine == "" {
+		ipLine = "n/a"
+	}
+
+	lines := []string{
+		SectionTitleStyle.Render("HOST"),
+		fmt.Sprintf("NAME: %s", name),
+		fmt.Sprintf("HOST: %s", host),
+		fmt.Sprintf("IP:   %s", ipLine),
+		fmt.Sprintf("OS:   %s", osLine),
+		fmt.Sprintf("CPU:  %s", cpuLine),
+		fmt.Sprintf("GPU:  %s", gpuLine),
+		fmt.Sprintf("PWR:  %s", pwr),
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+func formatIPLine(ips []stats.IPAddr) string {
+	if len(ips) == 0 {
+		return ""
+	}
+
+	max := 4
+	if len(ips) < max {
+		max = len(ips)
+	}
+
+	parts := make([]string, 0, max)
+	for i := 0; i < max; i++ {
+		parts = append(parts, fmt.Sprintf("%s %s", ips[i].Iface, ips[i].Addr))
+	}
+	if len(ips) > max {
+		parts = append(parts, fmt.Sprintf("+%d more", len(ips)-max))
+	}
+	return strings.Join(parts, " | ")
+}
+
 func renderProcessSection(s stats.Snapshot) string {
 	lines := []string{SectionTitleStyle.Render("TOP PROCESSES")}
 	if len(s.Top) == 0 {
@@ -63,8 +145,8 @@ func renderProcessSection(s stats.Snapshot) string {
 
 	for _, p := range s.Top {
 		lines = append(lines,
-			fmt.Sprintf("%-14s %7.0f%% CPU   %6.1f%% MEM",
-				trimTo(p.Name, 14),
+			fmt.Sprintf("%-18s %7.0f%% CPU   %6.1f%% MEM",
+				trimTo(p.Name, 18),
 				p.CPUPercent,
 				p.MemPercent,
 			),

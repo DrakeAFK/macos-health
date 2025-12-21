@@ -43,11 +43,17 @@ type Snapshot struct {
 
 	UptimeSec uint64
 
-	Top []ProcRow
+	Host HostInfo
+	Top  []ProcRow
 }
 
 func Collect(ctx context.Context) (Snapshot, error) {
 	var s Snapshot
+
+	if err := ctx.Err(); err != nil {
+		return s, err
+	}
+	s.Host = getHostInfo(ctx)
 
 	if err := ctx.Err(); err != nil {
 		return s, err
