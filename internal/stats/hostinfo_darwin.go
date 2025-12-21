@@ -38,8 +38,6 @@ type HostInfo struct {
 	GPUModel    string
 	PowerSource string
 
-	WifiSSID string
-
 	IPs []IPAddr
 }
 
@@ -77,7 +75,6 @@ func getHostInfo(ctx context.Context) HostInfo {
 
 	hi.GPUModel = gpuModel(ctx)
 	hi.PowerSource = powerSource(ctx)
-	hi.WifiSSID = wifiSSID(ctx)
 	hi.IPs = localIPs()
 
 	hostCached = hi
@@ -152,52 +149,6 @@ func powerSource(ctx context.Context) string {
 		return "Battery Power"
 	}
 	return "n/a"
-}
-
-func wifiSSID(ctx context.Context) string {
-	dev := wifiDevice(ctx)
-	if dev == "" {
-		return ""
-	}
-	out, err := exec.CommandContext(ctx, "networksetup", "-getairportnetwork", dev).Output()
-	if err != nil {
-		return ""
-	}
-	s := strings.TrimSpace(string(out))
-	if !strings.Contains(s, ":") {
-		return ""
-	}
-	parts := strings.SplitN(s, ":", 2)
-	if len(parts) != 2 {
-		return ""
-	}
-	ssid := strings.TrimSpace(parts[1])
-	if strings.EqualFold(ssid, "off") || strings.Contains(strings.ToLower(ssid), "not associated") {
-		return ""
-	}
-	return ssid
-}
-
-func wifiDevice(ctx context.Context) string {
-	out, err := exec.CommandContext(ctx, "networksetup", "-listallhardwareports").Output()
-	if err != nil {
-		return ""
-	}
-	lines := strings.Split(string(out), "\n")
-
-	isWiFiBlock := false
-	for _, line := range lines {
-		l := strings.TrimSpace(line)
-		if strings.HasPrefix(l, "Hardware Port:") {
-			val := strings.TrimSpace(strings.TrimPrefix(l, "Hardware Port:"))
-			isWiFiBlock = strings.EqualFold(val, "Wi-Fi") || strings.EqualFold(val, "AirPort")
-			continue
-		}
-		if isWiFiBlock && strings.HasPrefix(l, "Device:") {
-			return strings.TrimSpace(strings.TrimPrefix(l, "Device:"))
-		}
-	}
-	return ""
 }
 
 func localIPs() []IPAddr {

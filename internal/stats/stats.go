@@ -51,89 +51,85 @@ type Snapshot struct {
 func Collect(ctx context.Context) (Snapshot, error) {
 	var s Snapshot
 
-	if err := ctx.Err(); err != nil {
-		return s, err
-	}
-	s.Host = getHostInfo(ctx)
-
-	if err := ctx.Err(); err != nil {
-		return s, err
-	}
-	if cpuPct, err := cpuPercentNonBlocking(); err == nil {
-		s.CPUPercent = cpuPct
+	collecting := func() bool {
+		return ctx.Err() == nil
 	}
 
-	if err := ctx.Err(); err != nil {
-		return s, err
-	}
-	l1, l5, l15, err := loadAvg(ctx)
-	if err == nil {
-		s.Load1, s.Load5, s.Load15 = l1, l5, l15
+	if collecting() {
+		s.Host = getHostInfo(ctx)
 	}
 
-	if err := ctx.Err(); err != nil {
-		return s, err
-	}
-	vm, err := mem.VirtualMemory()
-	if err != nil {
-		return s, err
-	}
-	s.MemUsedBytes = vm.Used
-	s.MemTotalBytes = vm.Total
-	s.MemUsedPct = vm.UsedPercent
-
-	if err := ctx.Err(); err != nil {
-		return s, err
-	}
-	if swap, err := mem.SwapMemory(); err == nil {
-		s.SwapUsedBytes = swap.Used
+	if collecting() {
+		if cpuPct, err := cpuPercentNonBlocking(); err == nil {
+			s.CPUPercent = cpuPct
+		}
 	}
 
-	if err := ctx.Err(); err != nil {
-		return s, err
-	}
-	level, pct := memPressure(ctx)
-	s.MemPressureLevel = level
-	s.MemPressurePct = pct
-
-	if err := ctx.Err(); err != nil {
-		return s, err
-	}
-	if du, err := disk.Usage("/"); err == nil {
-		s.DiskUsedBytes = du.Used
-		s.DiskTotalBytes = du.Total
+	if collecting() {
+		l1, l5, l15, err := loadAvg(ctx)
+		if err == nil {
+			s.Load1, s.Load5, s.Load15 = l1, l5, l15
+		}
 	}
 
-	if err := ctx.Err(); err != nil {
-		return s, err
-	}
-	iface, down, up := activeNetRate(ctx)
-	s.NetIface = iface
-	s.NetDownBps = down
-	s.NetUpBps = up
-
-	if err := ctx.Err(); err != nil {
-		return s, err
-	}
-	bp, state, eta := battery(ctx)
-	s.BatteryPercent = bp
-	s.BatteryState = state
-	s.BatteryETA = eta
-
-	if err := ctx.Err(); err != nil {
-		return s, err
-	}
-	if hi, err := host.InfoWithContext(ctx); err == nil {
-		s.UptimeSec = hi.Uptime
+	if collecting() {
+		vm, err := mem.VirtualMemory()
+		if err != nil {
+			return s, err
+		}
+		s.MemUsedBytes = vm.Used
+		s.MemTotalBytes = vm.Total
+		s.MemUsedPct = vm.UsedPercent
 	}
 
-	if err := ctx.Err(); err != nil {
-		return s, err
+	if collecting() {
+		if swap, err := mem.SwapMemory(); err == nil {
+			s.SwapUsedBytes = swap.Used
+		}
 	}
-	topCPU, topMem, _ := topProcessesDual(ctx, 5)
-	s.TopCPU = topCPU
-	s.TopMem = topMem
 
+	if collecting() {
+		level, pct := memPressure(ctx)
+		s.MemPressureLevel = level
+		s.MemPressurePct = pct
+	}
+
+	if collecting() {
+		if du, err := disk.Usage("/"); err == nil {
+			s.DiskUsedBytes = du.Used
+			s.DiskTotalBytes = du.Total
+		}
+	}
+
+	if collecting() {
+		iface, down, up := activeNetRate(ctx)
+		s.NetIface = iface
+		s.NetDownBps = down
+		s.NetUpBps = up
+	}
+
+	if collecting() {
+		bp, state, eta := battery(ctx)
+		s.BatteryPercent = bp
+		s.BatteryState = state
+		s.BatteryETA = eta
+	}
+
+	if collecting() {
+		if hi, err := host.InfoWithContext(ctx); err == nil {
+			s.UptimeSec = hi.Uptime
+		}
+	}
+
+	if collecting() {
+		topCPU, topMem, _ := topProcessesDual(ctx, 5)
+		s.TopCPU = topCPU
+		s.TopMem = topMem
+	}
+
+	if ctx.Err() != nil {
+		return s, nil
+	}
 	return s, nil
 }
 

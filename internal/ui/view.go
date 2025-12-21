@@ -98,11 +98,6 @@ func renderHostSection(s stats.Snapshot) string {
 		pwr = "n/a"
 	}
 
-	ssid := h.WifiSSID
-	if ssid == "" {
-		ssid = "n/a"
-	}
-
 	ipLine := formatIPLine(h.IPs)
 	if ipLine == "" {
 		ipLine = "n/a"
@@ -112,7 +107,6 @@ func renderHostSection(s stats.Snapshot) string {
 		SectionTitleStyle.Render("HOST"),
 		fmt.Sprintf("NAME: %s", name),
 		fmt.Sprintf("HOST: %s", host),
-		fmt.Sprintf("WIFI: %s", ssid),
 		fmt.Sprintf("IP:   %s", ipLine),
 		fmt.Sprintf("OS:   %s", osLine),
 		fmt.Sprintf("CPU:  %s", cpuLine),

@@ -32,14 +32,12 @@ func tickCmd() tea.Cmd {
 }
 
 func (m model) Init() tea.Cmd {
-	// Fetch once immediately and schedule the first tick.
 	return tea.Batch(fetchSnapshot(), tickCmd())
 }
 
 func fetchSnapshot() tea.Cmd {
 	return func() tea.Msg {
-		// Ensure one refresh can't hang the UI.
-		ctx, cancel := context.WithTimeout(context.Background(), 850*time.Millisecond)
+		ctx, cancel := context.WithTimeout(context.Background(), 2500*time.Millisecond)
 		defer cancel()
 
 		snap, err := stats.Collect(ctx)
@@ -56,7 +54,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tickMsg:
-		// Re-arm the next tick AND refresh stats.
 		return m, tea.Batch(fetchSnapshot(), tickCmd())
 
 	case snapMsg:
