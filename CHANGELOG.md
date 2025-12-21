@@ -7,6 +7,36 @@ Versioning is loosely inspired by Semantic Versioning
 
 --- 
 
+## [0.2.0] – 2025-12-21
+
+Expanded system visibility and improved robustness of data collection and UI refresh behavior.
+
+### Added
+
+* Host system information section, including:
+  * Device (computer) name
+  * Hostname
+  * macOS version and build
+  * CPU model and core count
+  * GPU model
+  * Power source (AC or battery)
+* Separate process lists for:
+  * Top CPU-consuming processes
+  * Top memory-consuming processes
+* macOS memory pressure percentage alongside pressure category
+* Best-effort handling for slow or partial system calls without losing the entire refresh
+
+### Changed
+
+* Process reporting split into distinct CPU-heavy and memory-heavy sections
+* Data collection made fully best-effort so partial timeouts no longer blank the UI
+* UI refresh logic fixed to reliably update once per second
+* Host and system identity data cached to reduce overhead
+
+### Removed
+
+* Wi-Fi SSID reporting, due to macOS privacy restrictions and inconsistent availability
+
 ## [0.1.0] – 2025-10-27
 
 Initial release 
@@ -33,13 +63,3 @@ Initial release
 
 Everything refreshes once per second 
 If something stalls, it gets skipped 
-
---- 
-
-If you want, the *next* good cleanup step after this is: 
-
-* trimming the changelog header even more, or 
-* adding a `v0.1.1` entry once you make your first small fix or polish pass 
-
-But honestly — this is already very solid and very “real project” looking 
-

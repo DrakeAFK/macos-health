@@ -22,21 +22,22 @@ It refreshes once per second and gives you a clean overview of system health
 
 --- 
 
-## Features 
+## Features
 
-* Non-blocking terminal UI (Bubble Tea) 
-* CPU usage (delta-based, no fake sleeps) 
-* Load average (1m / 5m / 15m) 
-* Memory usage **with macOS memory pressure** 
-* Swap usage 
-* Disk usage (root volume) 
-* Network throughput for the **active interface only** 
-* Battery percentage, state, and remaining time 
-* System uptime 
-* Top processes by CPU and memory 
-* Context timeouts so one slow syscall doesn’t hang the UI 
+* Non-blocking terminal UI (Bubble Tea)
+* CPU usage (delta-based, no fake sleeps)
+* Load average (1m / 5m / 15m)
+* Memory usage **with macOS memory pressure**
+* Swap usage
+* Disk usage (root volume)
+* Network throughput for the **active interface only**
+* Battery percentage, state, and remaining time
+* System uptime
+* Host system information (device name, hostname, OS version/build, CPU/GPU, power source)
+* Top processes by CPU **and** top processes by memory
+* Context timeouts so one slow syscall doesn’t hang the UI
 
-If something stalls, it gets skipped -> The UI keeps going 
+If something stalls, it gets skipped → the UI keeps going 
 
 --- 
 
@@ -86,14 +87,25 @@ BAT:  82% (Discharging, 4:12)
 UPT:  3d 14h
 ``` 
 
+Additional sections are shown below the system overview - including host identity
+information and separate process lists for CPU-heavy and memory-heavy workloads 
+
 ### Top processes 
 
-```bash 
-TOP PROCESSES
+```bash
+TOP CPU PROCESSES
 chrome          180% CPU   13.2% MEM
 Xcode           120% CPU    9.8% MEM
 node             60% CPU    2.1% MEM
+
+TOP MEM PROCESSES
+chrome           42% CPU   18.9% MEM
+Xcode            30% CPU   14.1% MEM
+Docker            5% CPU    9.7% MEM
 ``` 
+
+Processes are split to make it obvious whether CPU pressure or memory pressure
+is responsible for slowdowns
 
 No graphs - No animations - Just numbers that update 
 
@@ -119,43 +131,43 @@ First sample is zero - That’s expected - Then it stabilizes
 
 --- 
 
-### macOS memory pressure (the important part) 
+### macOS memory pressure (the important part)
 
-macOS memory usage percentages are misleading 
+macOS memory usage percentages are misleading.
 
-This tool estimates memory pressure using: 
+This tool estimates memory pressure using:
 
-* `vm_stat` 
-* page size 
-* total system memory 
+* `vm_stat`
+* page size
+* total system memory
 
-It categorizes pressur as: 
+It categorizes pressure as:
 
-* Low (< 75% used) 
-* Medium (75–90%) 
-* High (> 90%) 
+* Low (< 75% used)
+* Medium (75–90%)
+* High (> 90%)
 
-This isn’t Apple’s internal algorithm, but it correlates well with 
-“is my system about to feel bad” 
-
---- 
-
-### Network stats that make sense 
-
-You don’t need stats for every interface 
-
-This tool: 
-
-1. Prefers `en0` (Wi-Fi, usually) 
-2. Falls back to the first active non-loopback interface 
-
-Rates are calculated from byte deltas between refreshes 
+This isn’t Apple’s internal algorithm - but it correlates well with
+“is my system about to feel bad”
 
 --- 
 
-## Project layout 
+### Network stats that make sense
 
-```bash 
+You don’t need stats for every interface.
+
+This tool:
+
+1. Prefers `en0` when it is active
+2. Falls back to the first active non-loopback interface
+
+Rates are calculated from byte deltas between refreshes.
+
+--- 
+
+## Project layout
+
+```bash
 .
 ├── main.go
 ├── go.mod
@@ -171,12 +183,13 @@ Rates are calculated from byte deltas between refreshes
         ├── mem_pressure_darwin.go
         ├── net_active_darwin.go
         ├── battery_darwin.go
+        ├── hostinfo_darwin.go
         └── top_procs.go
 ``` 
 
 * `internal/ui` handles rendering and layout 
-* `internal/stats` does system data collection 
-* `internal/` is intentional — this is an application, not a library 
+* `internal/stats` does macOS-specific system data collection 
+* `internal/` is intentional — this is an application not a library 
 
 --- 
 
@@ -201,6 +214,7 @@ go mod tidy
 
 ## Known limitations 
 
+* Some system identity details are best-effort due to macOS privacy restrictions
 * No temperature or fan data (macOS makes this painful - *at least when i tried*) 
 * Process CPU percentages are best-effort 
 * Disk usage only reports the root volume 
