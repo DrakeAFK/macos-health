@@ -7,20 +7,20 @@ import (
 	"github.com/shirou/gopsutil/v3/process"
 )
 
-func topProcesses(ctx context.Context, n int) ([]ProcRow, error) {
+func topProcessesDual(ctx context.Context, n int) ([]ProcRow, []ProcRow, error) {
 	if err := ctx.Err(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	procs, err := process.ProcessesWithContext(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	rows := make([]ProcRow, 0, len(procs))
 	for _, p := range procs {
 		if err := ctx.Err(); err != nil {
-			return rows, err
+			return rows, rows, err
 		}
 
 		name, err := p.NameWithContext(ctx)
@@ -38,15 +38,30 @@ func topProcesses(ctx context.Context, n int) ([]ProcRow, error) {
 		})
 	}
 
-	sort.Slice(rows, func(i, j int) bool {
-		if rows[i].CPUPercent == rows[j].CPUPercent {
-			return rows[i].MemPercent > rows[j].MemPercent
+	topCPU := make([]ProcRow, len(rows))
+	copy(topCPU, rows)
+	sort.Slice(topCPU, func(i, j int) bool {
+		if topCPU[i].CPUPercent == topCPU[j].CPUPercent {
+			return topCPU[i].MemPercent > topCPU[j].MemPercent
 		}
-		return rows[i].CPUPercent > rows[j].CPUPercent
+		return topCPU[i].CPUPercent > topCPU[j].CPUPercent
 	})
 
-	if len(rows) > n {
-		rows = rows[:n]
+	topMem := make([]ProcRow, len(rows))
+	copy(topMem, rows)
+	sort.Slice(topMem, func(i, j int) bool {
+		if topMem[i].MemPercent == topMem[j].MemPercent {
+			return topMem[i].CPUPercent > topMem[j].CPUPercent
+		}
+		return topMem[i].MemPercent > topMem[j].MemPercent
+	})
+
+	if len(topCPU) > n {
+		topCPU = topCPU[:n]
 	}
-	return rows, nil
+	if len(topMem) > n {
+		topMem = topMem[:n]
+	}
+
+	return topCPU, topMem, nil
 }

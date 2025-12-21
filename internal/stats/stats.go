@@ -43,8 +43,9 @@ type Snapshot struct {
 
 	UptimeSec uint64
 
-	Host HostInfo
-	Top  []ProcRow
+	Host   HostInfo
+	TopCPU []ProcRow
+	TopMem []ProcRow
 }
 
 func Collect(ctx context.Context) (Snapshot, error) {
@@ -129,9 +130,9 @@ func Collect(ctx context.Context) (Snapshot, error) {
 	if err := ctx.Err(); err != nil {
 		return s, err
 	}
-	if top, err := topProcesses(ctx, 5); err == nil {
-		s.Top = top
-	}
+	topCPU, topMem, _ := topProcessesDual(ctx, 5)
+	s.TopCPU = topCPU
+	s.TopMem = topMem
 
 	return s, nil
 }

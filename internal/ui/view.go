@@ -35,13 +35,14 @@ func Dashboard(s stats.Snapshot, width int) string {
 		width = 80
 	}
 
-	boxW := min(width-2, 100)
+	boxW := min(width-2, 110)
 
 	systemBox := BoxStyle.Width(boxW).Render(renderSystemSection(s))
 	hostBox := BoxStyle.Width(boxW).Render(renderHostSection(s))
-	procBox := BoxStyle.Width(boxW).Render(renderProcessSection(s))
+	cpuBox := BoxStyle.Width(boxW).Render(renderTopCPUSection(s))
+	memBox := BoxStyle.Width(boxW).Render(renderTopMemSection(s))
 
-	return systemBox + "\n\n" + hostBox + "\n\n" + procBox
+	return systemBox + "\n\n" + hostBox + "\n\n" + cpuBox + "\n\n" + memBox
 }
 
 func renderSystemSection(s stats.Snapshot) string {
@@ -97,6 +98,11 @@ func renderHostSection(s stats.Snapshot) string {
 		pwr = "n/a"
 	}
 
+	ssid := h.WifiSSID
+	if ssid == "" {
+		ssid = "n/a"
+	}
+
 	ipLine := formatIPLine(h.IPs)
 	if ipLine == "" {
 		ipLine = "n/a"
@@ -106,6 +112,7 @@ func renderHostSection(s stats.Snapshot) string {
 		SectionTitleStyle.Render("HOST"),
 		fmt.Sprintf("NAME: %s", name),
 		fmt.Sprintf("HOST: %s", host),
+		fmt.Sprintf("WIFI: %s", ssid),
 		fmt.Sprintf("IP:   %s", ipLine),
 		fmt.Sprintf("OS:   %s", osLine),
 		fmt.Sprintf("CPU:  %s", cpuLine),
@@ -136,14 +143,33 @@ func formatIPLine(ips []stats.IPAddr) string {
 	return strings.Join(parts, " | ")
 }
 
-func renderProcessSection(s stats.Snapshot) string {
-	lines := []string{SectionTitleStyle.Render("TOP PROCESSES")}
-	if len(s.Top) == 0 {
+func renderTopCPUSection(s stats.Snapshot) string {
+	lines := []string{SectionTitleStyle.Render("TOP CPU PROCESSES")}
+	if len(s.TopCPU) == 0 {
 		lines = append(lines, MutedStyle.Render("No process data yet."))
 		return strings.Join(lines, "\n")
 	}
 
-	for _, p := range s.Top {
+	for _, p := range s.TopCPU {
+		lines = append(lines,
+			fmt.Sprintf("%-18s %7.0f%% CPU   %6.1f%% MEM",
+				trimTo(p.Name, 18),
+				p.CPUPercent,
+				p.MemPercent,
+			),
+		)
+	}
+	return strings.Join(lines, "\n")
+}
+
+func renderTopMemSection(s stats.Snapshot) string {
+	lines := []string{SectionTitleStyle.Render("TOP MEM PROCESSES")}
+	if len(s.TopMem) == 0 {
+		lines = append(lines, MutedStyle.Render("No process data yet."))
+		return strings.Join(lines, "\n")
+	}
+
+	for _, p := range s.TopMem {
 		lines = append(lines,
 			fmt.Sprintf("%-18s %7.0f%% CPU   %6.1f%% MEM",
 				trimTo(p.Name, 18),
