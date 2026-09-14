@@ -30,3 +30,10 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# Local macos-health builds and GoReleaser output
+/macos-health
+/dist/
+
+# macOS filesystem metadata
+.DS_Store

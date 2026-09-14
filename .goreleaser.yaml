@@ -1,0 +1,81 @@
+version: 2
+
+project_name: macos-health
+
+builds:
+  - id: macos-health
+    main: .
+    binary: macos-health
+    hooks:
+      post:
+        - sh scripts/sign-binary.sh "{{ .Path }}"
+    goos:
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    goamd64:
+      - v1
+    flags:
+      - -trimpath
+      - -buildvcs=true
+    ldflags:
+      - >-
+        -s -w
+        -X main.version={{ .Version }}
+        -X main.commit={{ .Commit }}
+        -X main.date={{ .Date }}
+    env:
+      - CGO_ENABLED=1
+      - MACOSX_DEPLOYMENT_TARGET=12.0
+    overrides:
+      - goos: darwin
+        goarch: arm64
+        env:
+          - CGO_ENABLED=1
+          - CC=clang
+          - MACOSX_DEPLOYMENT_TARGET=12.0
+          - CGO_CFLAGS=-arch arm64 -mmacosx-version-min=12.0
+          - CGO_LDFLAGS=-arch arm64 -mmacosx-version-min=12.0
+      - goos: darwin
+        goarch: amd64
+        env:
+          - CGO_ENABLED=1
+          - CC=clang
+          - MACOSX_DEPLOYMENT_TARGET=12.0
+          - CGO_CFLAGS=-arch x86_64 -mmacosx-version-min=12.0
+          - CGO_LDFLAGS=-arch x86_64 -mmacosx-version-min=12.0
+
+archives:
+  - id: release-archives
+    ids:
+      - macos-health
+    formats:
+      - tar.gz
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64{{ else }}{{ .Arch }}{{ end }}
+    files:
+      - LICENSE
+      - README.md
+      - CHANGELOG.md
+      - SECURITY.md
+      - THIRD_PARTY_NOTICES.md
+      - docs/licenses/*
+      - completions/*
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - '^Merge '
+
+release:
+  prerelease: auto

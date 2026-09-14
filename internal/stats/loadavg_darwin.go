@@ -1,28 +1,49 @@
+//go:build darwin
+
 package stats
 
 import (
-	"bytes"
 	"context"
-	"os/exec"
+	"fmt"
+	"math"
 	"strconv"
 	"strings"
+
+	"github.com/shirou/gopsutil/v3/load"
 )
 
 func loadAvg(ctx context.Context) (float64, float64, float64, error) {
-	out, err := exec.CommandContext(ctx, "sysctl", "-n", "vm.loadavg").Output()
+	average, err := load.AvgWithContext(ctx)
 	if err != nil {
-		return 0, 0, 0, err
+		return 0, 0, 0, fmt.Errorf("load average: %w", err)
+	}
+	if invalidLoad(average.Load1) || invalidLoad(average.Load5) || invalidLoad(average.Load15) {
+		return 0, 0, 0, fmt.Errorf("load average returned an invalid value")
+	}
+	return average.Load1, average.Load5, average.Load15, nil
+}
+
+func parseLoadAvg(value string) (float64, float64, float64, error) {
+	value = strings.Trim(strings.TrimSpace(value), "{}")
+	parts := strings.Fields(value)
+	if len(parts) != 3 {
+		return 0, 0, 0, fmt.Errorf("load average: expected 3 values, got %d", len(parts))
 	}
 
-	s := strings.TrimSpace(string(bytes.TrimSpace(out)))
-	s = strings.Trim(s, "{}")
-	parts := strings.Fields(s)
-	if len(parts) < 3 {
-		return 0, 0, 0, err
+	parsed := make([]float64, 3)
+	for i, part := range parts {
+		value, err := strconv.ParseFloat(part, 64)
+		if err != nil {
+			return 0, 0, 0, fmt.Errorf("load average value %q: %w", part, err)
+		}
+		if invalidLoad(value) {
+			return 0, 0, 0, fmt.Errorf("load average value %q is out of range", part)
+		}
+		parsed[i] = value
 	}
+	return parsed[0], parsed[1], parsed[2], nil
+}
 
-	l1, _ := strconv.ParseFloat(parts[0], 64)
-	l5, _ := strconv.ParseFloat(parts[1], 64)
-	l15, _ := strconv.ParseFloat(parts[2], 64)
-	return l1, l5, l15, nil
+func invalidLoad(value float64) bool {
+	return value < 0 || math.IsNaN(value) || math.IsInf(value, 0)
 }

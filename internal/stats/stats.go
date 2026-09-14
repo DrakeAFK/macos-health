@@ -1,232 +1,141 @@
 package stats
 
 import (
-	"context"
-	"fmt"
+	"strings"
 	"time"
-
-	"github.com/shirou/gopsutil/v3/disk"
-	"github.com/shirou/gopsutil/v3/host"
-	"github.com/shirou/gopsutil/v3/mem"
+	"unicode"
 )
 
-type ProcRow struct {
-	Name       string
-	CPUPercent float64
-	MemPercent float64
+func availableStatus(at time.Time) MetricStatus {
+	return MetricStatus{Available: true, SampledAt: at}
 }
 
-type Snapshot struct {
-	CPUPercent float64
-	Load1      float64
-	Load5      float64
-	Load15     float64
-
-	MemUsedBytes  uint64
-	MemTotalBytes uint64
-	MemUsedPct    float64
-	SwapUsedBytes uint64
-
-	MemPressureLevel string
-	MemPressurePct   float64
-
-	DiskUsedBytes  uint64
-	DiskTotalBytes uint64
-
-	NetIface   string
-	NetDownBps float64
-	NetUpBps   float64
-
-	BatteryPercent float64
-	BatteryState   string
-	BatteryETA     string
-
-	UptimeSec uint64
-
-	Host   HostInfo
-	TopCPU []ProcRow
-	TopMem []ProcRow
+func unavailableStatus(at time.Time, err error) MetricStatus {
+	status := MetricStatus{SampledAt: at}
+	if err != nil {
+		status.Error = cleanText(err.Error())
+	}
+	return status
 }
 
-func Collect(ctx context.Context) (Snapshot, error) {
-	var s Snapshot
-
-	collecting := func() bool {
-		return ctx.Err() == nil
+// MergeLastGood carries forward a prior successful metric when the latest
+// attempt failed. The retained value is explicitly marked stale.
+func MergeLastGood(current, previous Snapshot) Snapshot {
+	carry := func(now, old MetricStatus) bool {
+		return !now.Available && old.Available
 	}
 
-	if collecting() {
-		s.Host = getHostInfo(ctx)
+	if carry(current.CPU.Status, previous.CPU.Status) {
+		err := current.CPU.Status.Error
+		current.CPU = previous.CPU
+		current.CPU.Status.Stale = true
+		current.CPU.Status.Error = err
+	}
+	if carry(current.Memory.Status, previous.Memory.Status) {
+		err := current.Memory.Status.Error
+		current.Memory = previous.Memory
+		current.Memory.Status.Stale = true
+		current.Memory.Status.Error = err
+	}
+	if carry(current.Disk.Status, previous.Disk.Status) {
+		err := current.Disk.Status.Error
+		current.Disk = previous.Disk
+		current.Disk.Status.Stale = true
+		current.Disk.Status.Error = err
+	}
+	if carry(current.Network.Status, previous.Network.Status) {
+		err := current.Network.Status.Error
+		current.Network = previous.Network
+		current.Network.Status.Stale = true
+		current.Network.Status.Error = err
+	}
+	if carry(current.Battery.Status, previous.Battery.Status) {
+		err := current.Battery.Status.Error
+		current.Battery = previous.Battery
+		current.Battery.Status.Stale = true
+		current.Battery.Status.Error = err
+	}
+	if carry(current.Thermal.Status, previous.Thermal.Status) {
+		err := current.Thermal.Status.Error
+		current.Thermal = previous.Thermal
+		current.Thermal.Status.Stale = true
+		current.Thermal.Status.Error = err
+	}
+	if carry(current.Processes.Status, previous.Processes.Status) {
+		err := current.Processes.Status.Error
+		current.Processes = previous.Processes
+		current.Processes.Status.Stale = true
+		current.Processes.Status.Error = err
+	}
+	if carry(current.Host.Status, previous.Host.Status) {
+		err := current.Host.Status.Error
+		current.Host = previous.Host
+		current.Host.Status.Stale = true
+		current.Host.Status.Error = err
+	}
+	if carry(current.System.Status, previous.System.Status) {
+		err := current.System.Status.Error
+		current.System = previous.System
+		current.System.Status.Stale = true
+		current.System.Status.Error = err
 	}
 
-	if collecting() {
-		if cpuPct, err := cpuPercentNonBlocking(); err == nil {
-			s.CPUPercent = cpuPct
+	if carry(current.Silicon.Status, previous.Silicon.Status) && current.Silicon.Enabled {
+		err := current.Silicon.Status.Error
+		current.Silicon = previous.Silicon
+		current.Silicon.Status.Stale = true
+		current.Silicon.Status.Error = err
+	}
+	if carry(current.Services.Status, previous.Services.Status) && current.Services.Enabled {
+		err := current.Services.Status.Error
+		current.Services = previous.Services
+		current.Services.Status.Stale = true
+		current.Services.Status.Error = err
+	}
+	current.Health = Assess(current, nil)
+	return current
+}
+
+// Redacted returns a copy safe to share in screenshots or diagnostic output.
+func (s Snapshot) Redacted() Snapshot {
+	s.Host.ComputerName = "redacted"
+	s.Host.Hostname = "redacted"
+	s.Network.Addresses = append([]IPAddr(nil), s.Network.Addresses...)
+	for i := range s.Network.Addresses {
+		s.Network.Addresses[i].Address = "redacted"
+	}
+	s.Services.Listeners = append([]Listener(nil), s.Services.Listeners...)
+	for i := range s.Services.Listeners {
+		s.Services.Listeners[i].Address = "redacted"
+	}
+	return s
+}
+
+func cleanText(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	needsClean := false
+	for i := 0; i < len(s); i++ {
+		b := s[i]
+		if b < 0x20 || b == 0x7f || b > 0x7e {
+			needsClean = true
+			break
 		}
 	}
-
-	if collecting() {
-		l1, l5, l15, err := loadAvg(ctx)
-		if err == nil {
-			s.Load1, s.Load5, s.Load15 = l1, l5, l15
+	if !needsClean {
+		return s
+	}
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) || (r >= 0x7f && r <= 0x9f) || isBidiControl(r) {
+			return -1
 		}
-	}
-
-	if collecting() {
-		vm, err := mem.VirtualMemory()
-		if err != nil {
-			return s, err
-		}
-		s.MemUsedBytes = vm.Used
-		s.MemTotalBytes = vm.Total
-		s.MemUsedPct = vm.UsedPercent
-	}
-
-	if collecting() {
-		if swap, err := mem.SwapMemory(); err == nil {
-			s.SwapUsedBytes = swap.Used
-		}
-	}
-
-	if collecting() {
-		level, pct := memPressure(ctx)
-		s.MemPressureLevel = level
-		s.MemPressurePct = pct
-	}
-
-	if collecting() {
-		if du, err := disk.Usage("/"); err == nil {
-			s.DiskUsedBytes = du.Used
-			s.DiskTotalBytes = du.Total
-		}
-	}
-
-	if collecting() {
-		iface, down, up := activeNetRate(ctx)
-		s.NetIface = iface
-		s.NetDownBps = down
-		s.NetUpBps = up
-	}
-
-	if collecting() {
-		bp, state, eta := battery(ctx)
-		s.BatteryPercent = bp
-		s.BatteryState = state
-		s.BatteryETA = eta
-	}
-
-	if collecting() {
-		if hi, err := host.InfoWithContext(ctx); err == nil {
-			s.UptimeSec = hi.Uptime
-		}
-	}
-
-	if collecting() {
-		topCPU, topMem, _ := topProcessesDual(ctx, 5)
-		s.TopCPU = topCPU
-		s.TopMem = topMem
-	}
-
-	if ctx.Err() != nil {
-		return s, nil
-	}
-	return s, nil
+		return r
+	}, s)
 }
 
-func (s Snapshot) CPUString() string {
-	return fmt.Sprintf("%4.0f%%", s.CPUPercent)
-}
-
-func (s Snapshot) LoadString() string {
-	if s.Load1 == 0 && s.Load5 == 0 && s.Load15 == 0 {
-		return "n/a"
-	}
-	return fmt.Sprintf("%.1f %.1f %.1f", s.Load1, s.Load5, s.Load15)
-}
-
-func (s Snapshot) MemString() string {
-	pressure := "n/a"
-	if s.MemPressureLevel != "" {
-		if s.MemPressureLevel == "Low" || s.MemPressureLevel == "Medium" || s.MemPressureLevel == "High" {
-			pressure = fmt.Sprintf("%s (%.0f%%)", s.MemPressureLevel, s.MemPressurePct)
-		} else {
-			pressure = s.MemPressureLevel
-		}
-	}
-
-	return fmt.Sprintf("%s / %s (Used: %.0f%%, Pressure: %s, Swap: %s)",
-		bytesHuman(s.MemUsedBytes),
-		bytesHuman(s.MemTotalBytes),
-		s.MemUsedPct,
-		pressure,
-		bytesHuman(s.SwapUsedBytes),
-	)
-}
-
-func (s Snapshot) DiskString() string {
-	if s.DiskTotalBytes == 0 {
-		return "n/a"
-	}
-	return fmt.Sprintf("%s / %s",
-		bytesHuman(s.DiskUsedBytes),
-		bytesHuman(s.DiskTotalBytes),
-	)
-}
-
-func (s Snapshot) NetString() string {
-	if s.NetIface == "" {
-		return "n/a"
-	}
-	return fmt.Sprintf("%s  ↓ %s/s  ↑ %s/s",
-		s.NetIface,
-		bytesHuman(uint64(s.NetDownBps)),
-		bytesHuman(uint64(s.NetUpBps)),
-	)
-}
-
-func (s Snapshot) BatteryString() string {
-	if s.BatteryState == "" && s.BatteryPercent == 0 {
-		return "n/a"
-	}
-	eta := s.BatteryETA
-	if eta == "" {
-		eta = "—"
-	}
-	return fmt.Sprintf("%.0f%% (%s, %s)", s.BatteryPercent, s.BatteryState, eta)
-}
-
-func (s Snapshot) UptimeString() string {
-	if s.UptimeSec == 0 {
-		return "n/a"
-	}
-	d := time.Duration(s.UptimeSec) * time.Second
-	days := int(d.Hours()) / 24
-	hours := int(d.Hours()) % 24
-	mins := int(d.Minutes()) % 60
-	if days > 0 {
-		return fmt.Sprintf("%dd %dh %dm", days, hours, mins)
-	}
-	return fmt.Sprintf("%dh %dm", hours, mins)
-}
-
-func bytesHuman(b uint64) string {
-	const (
-		KB = 1024
-		MB = 1024 * KB
-		GB = 1024 * MB
-		TB = 1024 * GB
-	)
-
-	switch {
-	case b >= TB:
-		return fmt.Sprintf("%.1f TB", float64(b)/float64(TB))
-	case b >= GB:
-		return fmt.Sprintf("%.1f GB", float64(b)/float64(GB))
-	case b >= MB:
-		return fmt.Sprintf("%.1f MB", float64(b)/float64(MB))
-	case b >= KB:
-		return fmt.Sprintf("%.1f KB", float64(b)/float64(KB))
-	default:
-		return fmt.Sprintf("%d B", b)
-	}
+func isBidiControl(r rune) bool {
+	return r == '\u061c' || r == '\u200e' || r == '\u200f' ||
+		(r >= '\u202a' && r <= '\u202e') || (r >= '\u2066' && r <= '\u2069')
 }

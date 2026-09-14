@@ -1,7 +1,13 @@
+//go:build darwin
+
 package stats
 
 import (
 	"context"
+	"fmt"
+	"net"
+	"sort"
+	"strings"
 	"time"
 
 	gnet "github.com/shirou/gopsutil/v3/net"
@@ -13,93 +19,164 @@ type netTotals struct {
 	at   time.Time
 }
 
-var lastByIface = map[string]netTotals{}
-
-func activeNetRate(ctx context.Context) (iface string, downBps float64, upBps float64) {
-	_ = ctx
-
-	iface = pickActiveIface()
-	if iface == "" {
-		return "", 0, 0
-	}
-
-	io, err := gnet.IOCounters(true)
-	if err != nil {
-		return iface, 0, 0
-	}
-
-	var sent, recv uint64
-	found := false
-	for _, row := range io {
-		if row.Name == iface {
-			sent = row.BytesSent
-			recv = row.BytesRecv
-			found = true
-			break
-		}
-	}
-	if !found {
-		return iface, 0, 0
-	}
-
-	now := time.Now()
-	cur := netTotals{sent: sent, recv: recv, at: now}
-
-	prev, ok := lastByIface[iface]
-	if !ok {
-		lastByIface[iface] = cur
-		return iface, 0, 0
-	}
-
-	dt := cur.at.Sub(prev.at).Seconds()
-	if dt <= 0 {
-		lastByIface[iface] = cur
-		return iface, 0, 0
-	}
-
-	down := float64(cur.recv-prev.recv) / dt
-	up := float64(cur.sent-prev.sent) / dt
-
-	lastByIface[iface] = cur
-	return iface, down, up
+type netRate struct {
+	name      string
+	down      float64
+	up        float64
+	available bool
 }
 
-func pickActiveIface() string {
-	ifaces, err := gnet.Interfaces()
+func (c *Collector) collectNetwork(ctx context.Context, now time.Time) NetworkStats {
+	result := NetworkStats{Status: MetricStatus{SampledAt: now}}
+	interfaces, ifaceErr := gnet.InterfacesWithContext(ctx)
+	counters, countersErr := nativeNetCounters(ctx)
+	if ifaceErr != nil || countersErr != nil {
+		result.Status = unavailableStatus(now, joinErrors(ifaceErr, countersErr))
+		return result
+	}
+
+	up := make(map[string]gnet.InterfaceStat)
+	for _, iface := range interfaces {
+		if interfaceUsable(iface) {
+			up[iface.Name] = iface
+			for _, raw := range iface.Addrs {
+				ip := parseIP(raw.Addr)
+				if ip == nil || !usableIP(ip) {
+					continue
+				}
+				result.Addresses = append(result.Addresses, IPAddr{Interface: cleanText(iface.Name), Address: cleanText(ip.String())})
+			}
+		}
+	}
+	sort.Slice(result.Addresses, func(i, j int) bool {
+		if result.Addresses[i].Interface == result.Addresses[j].Interface {
+			return result.Addresses[i].Address < result.Addresses[j].Address
+		}
+		return result.Addresses[i].Interface < result.Addresses[j].Interface
+	})
+
+	defaultIface := c.routeInterface(ctx, now)
+	rates := make([]netRate, 0, len(counters))
+
+	c.netMu.Lock()
+	for _, row := range counters {
+		if _, ok := up[row.Name]; !ok {
+			continue
+		}
+		current := netTotals{sent: row.BytesSent, recv: row.BytesRecv, at: now}
+		previous, exists := c.lastNet[row.Name]
+		c.lastNet[row.Name] = current
+		rate := netRate{name: row.Name}
+		if exists {
+			dt := now.Sub(previous.at).Seconds()
+			if dt > 0 && dt < 30 && row.BytesRecv >= previous.recv && row.BytesSent >= previous.sent {
+				rate.down = float64(row.BytesRecv-previous.recv) / dt
+				rate.up = float64(row.BytesSent-previous.sent) / dt
+				rate.available = true
+			}
+		}
+		rates = append(rates, rate)
+	}
+	c.netMu.Unlock()
+
+	if len(rates) == 0 {
+		result.Status = unavailableStatus(now, fmt.Errorf("no active network interface"))
+		return result
+	}
+
+	chosen := rates[0]
+	for _, rate := range rates {
+		if rate.available && (!chosen.available || rate.down+rate.up > chosen.down+chosen.up) {
+			chosen = rate
+		}
+	}
+	if chosen.down+chosen.up == 0 && defaultIface != "" {
+		for _, rate := range rates {
+			if rate.name == defaultIface && (rate.available || !chosen.available) {
+				chosen = rate
+				break
+			}
+		}
+	}
+
+	result.Status = availableStatus(now)
+	result.Interface = cleanText(chosen.name)
+	result.DownBytesPerSecond = chosen.down
+	result.UpBytesPerSecond = chosen.up
+	result.RatesAvailable = chosen.available
+	return result
+}
+
+func (c *Collector) routeInterface(ctx context.Context, now time.Time) string {
+	c.netMu.Lock()
+	if !c.defaultIfaceAt.IsZero() && now.Sub(c.defaultIfaceAt) < 10*time.Second {
+		value := c.defaultIface
+		c.netMu.Unlock()
+		return value
+	}
+	c.netMu.Unlock()
+
+	out, err := commandOutput(ctx, "/sbin/route", "-n", "get", "default")
 	if err != nil {
+		c.netMu.Lock()
+		c.defaultIface = ""
+		c.defaultIfaceAt = now
+		c.netMu.Unlock()
 		return ""
 	}
+	value := parseRouteInterface(string(out))
+	c.netMu.Lock()
+	c.defaultIface = value
+	c.defaultIfaceAt = now
+	c.netMu.Unlock()
+	return value
+}
 
-	for _, itf := range ifaces {
-		if itf.Name == "en0" && isUpNonLoopback(itf) {
-			return itf.Name
+func parseRouteInterface(output string) string {
+	for _, line := range strings.Split(output, "\n") {
+		key, value, ok := strings.Cut(line, ":")
+		if ok && strings.TrimSpace(key) == "interface" {
+			return cleanText(value)
 		}
 	}
-
-	for _, itf := range ifaces {
-		if isUpNonLoopback(itf) {
-			return itf.Name
-		}
-	}
-
 	return ""
 }
 
-func isUpNonLoopback(itf gnet.InterfaceStat) bool {
-	up := false
-	loop := false
-
-	for _, f := range itf.Flags {
-		switch f {
+func interfaceUsable(iface gnet.InterfaceStat) bool {
+	up, loopback := false, false
+	for _, flag := range iface.Flags {
+		switch flag {
 		case "up":
 			up = true
 		case "loopback":
-			loop = true
+			loopback = true
 		}
 	}
-	if !up || loop {
+	if !up || loopback {
 		return false
 	}
+	for _, address := range iface.Addrs {
+		if usableIP(parseIP(address.Addr)) {
+			return true
+		}
+	}
+	return false
+}
 
-	return len(itf.Addrs) > 0
+func parseIP(value string) net.IP {
+	if strings.Contains(value, "/") {
+		ip, _, err := net.ParseCIDR(value)
+		if err == nil {
+			return ip
+		}
+		return nil
+	}
+	return net.ParseIP(value)
+}
+
+func usableIP(ip net.IP) bool {
+	if ip == nil || ip.IsLoopback() || ip.IsUnspecified() || ip.IsLinkLocalUnicast() {
+		return false
+	}
+	return true
 }

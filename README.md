@@ -1,254 +1,285 @@
+# macos-health
 
-# macos-health 
+An Apple-silicon-first terminal dashboard that answers three questions quickly:
 
-A terminal-based system health dashboard for macOS 
+1. Is my Mac healthy?
+2. If not, why?
+3. Which process is responsible?
 
-This exists because: 
+`macos-health` combines real macOS memory pressure, per-core CPU activity,
+APFS capacity, network throughput, battery health, thermal state, and current
+process deltas in a responsive Bubble Tea interface. It is read-only, local,
+and unprivileged: no daemon, no analytics, no network requests, and no surprise
+`sudo` prompt.
 
-* I wanted a fast, readable system overview 
-* `top` is meh 
-* `htop` is better, but not macOS-aware 
-* I wanted to build something in Go and actually understand it 
+```text
+macos-health [OK] Your Mac looks healthy                         now
+[1 Overview]  2 Processes  3 Battery  4 System
 
-So here we are 
+CPU     14%  ▁▂▂▃  load 2.1/11  thermal Nominal
+MEM     68%  ▆▆▆▆  12.2 GiB/18.0 GiB  pressure Normal
+BAT     82% Discharging 4h12m  health 91%
+DISK    318.4 GiB free  69%
+NET     en0  ↓2.1 MiB/s ↑340 KiB/s
 
---- 
+CULPRITS
+CPU  Code Helper (Renderer)  42%
+MEM  Browser Helper          612 MiB
+```
 
-## What it does 
+The overview always fits the terminal. At 80×24 it stays compact; wide
+terminals gain two-column metric and process layouts; very small terminals get
+a bounded status-first view instead of clipped panels.
 
-`macos-health` shows you some stuff you might care about, in real time, without freezing your terminal or lying to you about memory 
+## Why it is macOS-aware
 
-It refreshes once per second and gives you a clean overview of system health 
+- Uses the kernel's Normal / Warning / Critical memory-pressure state and
+  headroom, plus compression, swap, and live page-outs.
+- Understands Apple silicon core topology such as `5P + 6E`.
+- Reports battery maximum capacity, condition, cycles, pack temperature,
+  estimated runtime, charger state, and Low Power Mode.
+- Measures the shared APFS container instead of undercounting the sealed system
+  snapshot, with live internal-disk read/write throughput.
+- Selects the active/default interface without assuming all traffic uses
+  `en0`, including VPN and Ethernet setups.
+- Calculates current process CPU from interval deltas. `100%` means one logical
+  core; multi-core processes can exceed it.
+- Treats warming, unavailable, stale, and successful zero values as different
+  states. Failed telemetry never silently becomes `0`.
+- Exposes coarse, permissionless macOS thermal/performance pressure without
+  pretending privileged CPU/GPU sensors are available.
 
---- 
+See [Metrics and data sources](docs/metrics.md) for exact sources, units,
+cadences, thresholds, and limitations.
 
-## Features
+## Install
 
-* Non-blocking terminal UI (Bubble Tea)
-* CPU usage (delta-based, no fake sleeps)
-* Load average (1m / 5m / 15m)
-* Memory usage **with macOS memory pressure**
-* Swap usage
-* Disk usage (root volume)
-* Network throughput for the **active interface only**
-* Battery percentage, state, and remaining time
-* System uptime
-* Host system information (device name, hostname, OS version/build, CPU/GPU, power source)
-* Top processes by CPU **and** top processes by memory
-* Context timeouts so one slow syscall doesn’t hang the UI
+### Release archive
 
-If something stalls, it gets skipped → the UI keeps going 
+Download the `darwin_arm64` archive for Apple silicon or `darwin_x86_64` for an
+Intel Mac from [GitHub Releases](https://github.com/DrakeAFK/macos-health/releases),
+then verify it against `checksums.txt` from the same release.
 
---- 
+```sh
+tar -xzf macos-health_VERSION_darwin_arm64.tar.gz
+mkdir -p "$HOME/.local/bin"
+install -m 0755 macos-health "$HOME/.local/bin/macos-health"
+```
 
-## Requirements 
+Add `$HOME/.local/bin` to `PATH` if it is not already there.
 
-* macOS (Intel or Apple Silicon) 
-* Go 1.21+ (1.22 recommended) 
+Release binaries target macOS 12 or newer and do not require Go at runtime.
+They are currently unsigned/not notarized, so review the release-integrity and
+Gatekeeper notes in [SECURITY.md](SECURITY.md).
 
---- 
+### Go install
 
-## Install 
+Source builds require Go 1.25 or newer, Xcode Command Line Tools, and CGO.
 
-### Clone it 
+```sh
+xcode-select --install # only if Apple Command Line Tools are missing
+go install github.com/drakeafk/macos-health@latest
+```
 
-```bash 
-git clone https://github.com/drakeafk/macos-health.git
+### Build from source
+
+```sh
+git clone https://github.com/DrakeAFK/macos-health.git
 cd macos-health
-``` 
+make build
+./dist/macos-health
+```
 
-### Build it 
+## Use
 
-```bash 
-go build -o macos-health .
-``` 
+Run the interactive dashboard:
 
-### Run it 
+```sh
+macos-health
+```
 
-```bash 
-./macos-health
-``` 
+Keyboard controls:
 
-Quit with `q` or `Ctrl+C` 
+| Key | Action |
+| --- | --- |
+| `1`–`8`, `Tab`, `Shift+Tab` | Switch Overview, Processes, Battery, System, Silicon, History, Insights, and Workloads |
+| `/`, `Enter`, `Esc` | Search processes, inspect the selected process, and return |
+| `a` | Group processes by owning app |
+| `s` | Sort processes by CPU or resident memory |
+| `[` / `]` | Change history window from 1 minute to 1 hour |
+| `t`, `w` | Change theme, save preferences |
+| `Space` | Pause or resume refreshes |
+| `r` | Refresh immediately |
+| `x` | Toggle host/address privacy redaction |
+| `?` | Show responsive help |
+| `q`, `Ctrl+C` | Quit |
 
---- 
+The default refresh interval is one second. Collection is single-flight: a
+slow attempt is never overlapped by another, and an older result cannot replace
+a newer snapshot.
 
-## What you’ll see 
+### One-shot and JSON output
 
-### System overview 
+Plain output is useful for diagnostics, screen readers, issue reports, and
+shell pipelines:
 
-```bash 
-SYSTEM
-CPU:  23%    Load: 1.2 0.9 0.8
-MEM:  12.3 / 32 GB (Used: 38%, Pressure: Low (42%), Swap: 0.0 GB)
-DISK: 420 / 1000 GB
-NET:  en0  ↓ 2.1 MB/s  ↑ 340 KB/s
-BAT:  82% (Discharging, 4:12)
-UPT:  3d 14h
-``` 
+```sh
+macos-health --once
+macos-health --json | jq '.health, .memory, .battery'
+macos-health --json --redact > health.json
+```
 
-Additional sections are shown below the system overview - including host identity
-information and separate process lists for CPU-heavy and memory-heavy workloads 
+JSON snapshots include a top-level `schema_version` for consumers that need a
+stable compatibility check.
 
-### Top processes 
+When stdout is not a terminal, `macos-health` automatically emits one plain
+snapshot rather than trying to open an interactive TUI.
 
-```bash
-TOP CPU PROCESSES
-chrome          180% CPU   13.2% MEM
-Xcode           120% CPU    9.8% MEM
-node             60% CPU    2.1% MEM
+### Command-line options
 
-TOP MEM PROCESSES
-chrome           42% CPU   18.9% MEM
-Xcode            30% CPU   14.1% MEM
-Docker            5% CPU    9.7% MEM
-``` 
+```text
+--once            print one text snapshot and exit
+--json            print one structured JSON snapshot and exit
+--stream          emit newline-delimited JSON snapshots until interrupted
+--samples 10      stop a stream after 10 samples
+--record FILE     record private NDJSON snapshots (new file, 256 MiB cap)
+--replay FILE     replay a recording for debugging or demos
+--serve IP:PORT   serve loopback /snapshot, /metrics, and /healthz endpoints
+--check           return 0 healthy, 1 incomplete, 3 warning, or 4 critical
+--schema          print the versioned snapshot JSON Schema
+--prometheus      print fresh Prometheus metrics for one snapshot
+--interval 2s     set refresh interval (250ms to 1m)
+--no-color        disable ANSI colors
+--no-alt-screen   keep dashboard output in the normal screen buffer
+--ascii           use ASCII-only charts and symbols
+--redact          hide computer name, hostname, and local addresses
+--sensors         enable native Apple silicon power, temperature, GPU, and fan data
+--ports           inspect local TCP listeners
+--system-processes use ps for wider system visibility (more overhead)
+--theme NAME      ocean, amber, or violet
+--group           start with app grouping enabled
+--save-config     save preferences to the config file and exit
+--demo            synthetic safe telemetry for screenshots and demos
+--version         print version, commit, and build date
+```
 
-Processes are split to make it obvious whether CPU pressure or memory pressure
-is responsible for slowdowns
+`NO_COLOR` is honored. `TERM=dumb` automatically selects plain ASCII one-shot
+output. Exit status is `0` on success, `1` when required telemetry or execution
+fails, and `2` for invalid command-line usage.
 
-No graphs - No animations - Just numbers that update 
+## Dashboard pages
 
---- 
+### Overview
 
-## Why this exists 
+Health state and explanation, CPU/load/thermal trend, unified-memory context,
+battery, APFS free space, network rates, and the leading CPU/memory culprits.
+Warnings are explainable rules, not an opaque synthetic score.
 
-### Non-blocking by default 
+### Processes
 
-I tried one terminal dashboard on macOS and it froze almost immediately 
+The default Apple-native collector uses `libproc` to show every accessible
+process with process start identity, parent PID, resident memory, physical
+footprint, per-process disk I/O, and interval CPU. `/` searches names, owning
+apps, PID, and the `AI`/`Dev` workload labels. `a` groups helpers into apps;
+`Enter` opens a PID-reuse-safe detail view with history. `--system-processes`
+uses `/bin/ps` when wider system visibility matters more than footprint and I/O.
 
-All metric collection runs asynchronously with timeouts 
-If a syscall hangs, it gets dropped and the UI keeps updating 
+### Battery
 
---- 
+Charge and ETA history, maximum capacity, macOS condition, cycle count,
+battery-pack temperature when available, active power source, adapter wattage,
+and Low Power Mode.
 
-### CPU usage that doesn’t lie 
+### System
 
-CPU usage is computed from deltas of `cpu.Times` 
-There are no sleeps and no blocking calls just to calculate percentages 
+Mac model, SoC, P/E topology, GPU identity/core count, macOS build, uptime,
+architecture/Rosetta state, APFS capacity, active interface, hostname, and local
+addresses. Identity and address details live here rather than on the
+screenshot-friendly overview.
 
-First sample is zero - That’s expected - Then it stabilizes 
+### Silicon
 
---- 
+On Apple silicon builds with CGO, the read-only native backend samples IOReport
+energy and GPU residency plus AppleSMC/HID temperatures and fan RPM. It reports
+CPU/GPU/Neural Engine power, GPU activity, and temperatures when the hardware
+exposes them. Missing channels remain unavailable and never become zero.
 
-### macOS memory pressure (the important part)
+### History, Insights, and Workloads
 
-macOS memory usage percentages are misleading.
+History keeps a bounded in-memory timeline with CPU, memory, GPU, network, and
+disk charts. Insights records condition transitions and pairs warnings with
+evidence and next actions. Workloads gives developers and local-AI users memory
+budgets for model weights and shows grouped development/AI processes. `--record`
+and `--replay` make slowdowns reproducible without a daemon or network service.
 
-This tool estimates memory pressure using:
+### Local API
 
-* `vm_stat`
-* page size
-* total system memory
+`--serve 127.0.0.1:9797` exposes the latest redacted-or-unredacted snapshot as
+JSON, Prometheus text, and a health endpoint. It binds only to a literal
+loopback address and uses bounded HTTP timeouts. The same schema is available
+with `--schema` for agents and integrations.
 
-It categorizes pressure as:
+## Trust, privacy, and permissions
 
-* Low (< 75% used)
-* Medium (75–90%)
-* High (> 90%)
+All collection happens locally through Darwin system interfaces and Apple tools
+invoked by absolute path with a fixed locale. The optional native Silicon page
+uses read-only IOReport and AppleSMC/HID calls. Process arguments, environments,
+battery serials, and hardware UUIDs are not collected. External text is
+sanitized before terminal rendering.
 
-This isn’t Apple’s internal algorithm - but it correlates well with
-“is my system about to feel bad”
+The System page and exported snapshots can still contain a computer name,
+hostname, local addresses, process names, and PIDs. Use `x` or `--redact`
+before sharing output. Redaction does not upload, delete, or modify anything on
+the Mac.
 
---- 
+`macos-health` does not require root, Full Disk Access, Accessibility access,
+or Location Services. It never launches `sudo` and does not make an outbound
+network request.
 
-### Network stats that make sense
+## Deliberate limitations
 
-You don’t need stats for every interface.
+Some Apple silicon power, temperature, fan, and residency channels are
+available through the optional native backend. Coverage is model- and
+macOS-dependent; unsupported channels are marked unavailable. The dashboard
+never prompts for elevated privileges or invents a value.
 
-This tool:
+Battery and thermal properties are best-effort because Apple can change their
+shape between hardware and macOS releases. Unsupported readings are hidden or
+marked unavailable. Intel Macs remain supported, but Apple-silicon-only fields
+such as P/E topology naturally do not appear.
 
-1. Prefers `en0` when it is active
-2. Falls back to the first active non-loopback interface
+## Development
 
-Rates are calculated from byte deltas between refreshes.
+```sh
+make check          # format check, vet, race-enabled tests, native build
+make test
+make build-all      # Darwin arm64 and x86_64
+make release-check
+make snapshot       # unpublished GoReleaser artifacts
+```
 
---- 
+The test suite covers malformed Apple command output, counter resets and PID
+reuse, stale-value retention, terminal control characters, health thresholds,
+model single-flight behavior, and UI bounds from tiny terminals through wide
+layouts. CI runs on native Apple silicon and Intel macOS runners; tagged builds
+produce architecture-specific archives and SHA-256 checksums.
 
-## Project layout
+Project structure:
 
-```bash
+```text
 .
-├── main.go
-├── go.mod
-├── go.sum
-└── internal
-    ├── ui
-    │   ├── styles.go
-    │   └── view.go
-    └── stats
-        ├── stats.go
-        ├── cpu_nonblocking.go
-        ├── loadavg_darwin.go
-        ├── mem_pressure_darwin.go
-        ├── net_active_darwin.go
-        ├── battery_darwin.go
-        ├── hostinfo_darwin.go
-        └── top_procs.go
-``` 
+├── main.go                 CLI, one-shot/JSON output, TUI startup
+├── internal/app            Bubble Tea state and single-flight scheduling
+├── internal/stats          stateful Darwin collectors and health assessment
+├── internal/ui             responsive pages, text output, and themes
+├── docs/metrics.md         metric provenance and limitations
+├── Makefile
+└── .goreleaser.yaml
+```
 
-* `internal/ui` handles rendering and layout 
-* `internal/stats` does macOS-specific system data collection 
-* `internal/` is intentional — this is an application not a library 
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before submitting changes. Report
+security issues privately as described in [SECURITY.md](SECURITY.md).
 
---- 
+## License
 
-## Development 
-
-Normal Go workflow 
-
-```bash 
-go fmt ./...
-go vet ./...
-go build ./...
-go run .
-``` 
-
-Dependencies are managed with Go modules 
-
-```bash 
-go mod tidy
-``` 
-
---- 
-
-## Known limitations 
-
-* Some system identity details are best-effort due to macOS privacy restrictions
-* No temperature or fan data (macOS makes this painful - *at least when i tried*) 
-* Process CPU percentages are best-effort 
-* Disk usage only reports the root volume 
-* No configuration file (yet) 
-
---- 
-
-## Roadmap (maybe) 
-
-Things I might add but no promises: 
-
-* Better per-process CPU smoothing 
-* Optional temperature/fan data (best-effort) 
-* Configurable refresh interval 
-* Multi-volume disk stats 
-* JSON snapshot output for scripting 
-
-
---- 
-
-## Versioning 
-
-This project uses a simple SemVer-inspired approach 
-
-* `v0.x` — things may change 
-* `v1.0.0` — stable interface (eventually) 
-
-See `CHANGELOG.md` for details 
-
---- 
-
-## License 
-
-MIT 
-
-Do whatever you want with it - Just don’t blame me if it breaks 
-
+MIT — see [LICENSE](LICENSE).

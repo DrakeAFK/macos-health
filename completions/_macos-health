@@ -1,0 +1,36 @@
+#compdef macos-health
+
+_macos-health() {
+    local -a args
+    args=(
+        '--once[Print one text snapshot and exit]'
+        '--json[Print one structured JSON snapshot and exit]'
+        '--stream[Stream newline-delimited JSON snapshots]'
+        '--samples[Stop a stream after N samples]:samples:'
+        '--duration[Stop collection after a duration]:duration:'
+        '--record[Record private snapshots to a new file]:file:_files'
+        '--replay[Replay a recording]:file:_files'
+        '--serve[Serve loopback JSON, Prometheus, and health endpoints]:address:'
+        '--check[Return a health status exit code]'
+        '--schema[Print the snapshot JSON Schema]'
+        '--prometheus[Print Prometheus metrics]'
+        '--interval[Set refresh interval (e.g. 1s, 500ms)]:interval:'
+        '--no-color[Disable ANSI colors]'
+        '--no-alt-screen[Keep dashboard output in the normal screen buffer]'
+        '--ascii[Use ASCII-only charts and symbols]'
+        '--redact[Hide computer name, hostname, and local addresses]'
+        '--sensors[Read native Apple silicon sensors]'
+        '--ports[Inspect local TCP listeners]'
+        '--system-processes[Use ps for wider process visibility]'
+        '--theme[Set ocean, amber, or violet theme]:theme:(ocean amber violet)'
+        '--group[Group processes by owning application]'
+        '--config[Use a preferences JSON file]:file:_files'
+        '--save-config[Save preferences and exit]'
+        '--demo[Use synthetic telemetry for a safe demo]'
+        '--version[Print version, commit, and build date]'
+        '(- *):help[Show help]'
+    )
+    _describe -t commands 'macos-health options' args
+}
+
+_macos-health "$@"
