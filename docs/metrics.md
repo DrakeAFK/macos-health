@@ -1,9 +1,8 @@
 # Metrics and data sources
 
-`macos-health` is a local, best-effort view of macOS health. It favors Darwin
-kernel interfaces and Apple tools, with an optional native IOReport/AppleSMC
-backend for richer Apple-silicon telemetry. A missing reading is reported as
-unavailable; it is never converted into a successful zero value.
+`macos-health` reads Darwin kernel interfaces and Apple system tools. Native
+IOReport/AppleSMC sensors are enabled by default; use `--sensors=false` to
+disable them. Missing readings are marked unavailable.
 
 ## Sampling model
 
@@ -128,11 +127,11 @@ CPU speed, scheduler, or thermal limits that macOS exposes. A nominal state
 means macOS has not reported a warning through this interface; it does not mean
 that every component is cool.
 
-The optional Silicon page uses read-only IOReport and AppleSMC/HID interfaces.
+The optional Silicon page uses read-only IOReport and AppleSMC interfaces.
 These are private, model- and OS-dependent APIs; the backend is isolated behind
 capability checks and can be disabled with `--sensors=false`. It may report:
 
-- CPU, GPU, and Neural Engine energy in watts;
+- CPU, GPU, and Neural Engine power in watts;
 - GPU active residency;
 - average CPU and GPU sensor temperatures;
 - fan RPM where SMC exposes stable fan keys.
@@ -177,8 +176,7 @@ imply that GPU utilization telemetry is available.
 
 ## Health assessment
 
-The health summary is explainable rule output, not a synthetic benchmark or a
-medical-style diagnosis. Current rules include:
+The health summary uses these rules:
 
 - kernel memory warning/critical pressure and page-outs at or above 10 MiB/s;
 - disk warning at 90% used and critical status at 97%;

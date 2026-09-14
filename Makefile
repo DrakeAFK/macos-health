@@ -72,7 +72,7 @@ release-check:
 	goreleaser check
 
 snapshot:
-	goreleaser release --snapshot --clean
+	goreleaser release --snapshot --clean --skip=publish
 
 clean:
 	rm -rf "$(DIST_DIR)"

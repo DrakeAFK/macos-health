@@ -1,16 +1,8 @@
-# Changelog 
-
-This file documents notable changes to `macos-health` 
-
-Versioning is loosely inspired by Semantic Versioning
-([https://semver.org](https://semver.org)), but without pretending everything is stable yet 
-
---- 
+# Changelog
 
 ## [Unreleased]
 
-Major dashboard release focused on diagnosis, local AI/developer workloads,
-native Apple silicon telemetry, and agent-friendly exports.
+Adds process inspection, history, native Apple silicon sensors, and local exports.
 
 ### Added
 
@@ -20,19 +12,18 @@ native Apple silicon telemetry, and agent-friendly exports.
   PID, physical footprint, and per-process disk I/O
 * Search, app grouping, AI/Dev workload labels, PID-reuse-safe process details,
   and process history
-* Read-only IOReport/AppleSMC/HID bridge for Apple silicon CPU/GPU/ANE power,
+* Read-only IOReport/AppleSMC bridge for Apple silicon CPU/GPU/ANE power,
   GPU activity, temperatures, and fan RPM where channels exist
-* Bounded in-memory history, transition events, evidence-backed insights, and
+* Bounded in-memory history, transition events, health events, and
   model-weight memory budget estimates
 * Private NDJSON recording/replay with a 256 MiB cap and strict monotonic
   timestamps
 * `--stream`, `--samples`, `--duration`, `--record`, `--replay`, `--check`,
   `--schema`, `--prometheus`, `--serve`, and safe `--demo` modes
 * Loopback-only JSON/Prometheus/health HTTP endpoints with bounded timeouts
-* Strict private preferences at `$XDG_CONFIG_HOME/macos-health/config.json` or
+* Saved preferences at `$XDG_CONFIG_HOME/macos-health/config.json` or
   `~/.config/macos-health/config.json`
-* Optional Developer ID signing and notarization hooks for release runners
-* Full Bash, Fish, and Zsh completion coverage for the expanded CLI
+* Bash, Fish, and Zsh completions for the expanded CLI
 * Health assessment with explainable warning/critical reasons instead of an
   opaque score
 * Rolling CPU, memory, and battery sparklines
@@ -51,7 +42,7 @@ native Apple silicon telemetry, and agent-friendly exports.
 * Privacy redaction toggle (`x`) for host and local-address details
 * Tests for parsers, counter resets, PID reuse, health rules, single-flight app
   state, terminal sanitization, Unicode, and responsive viewport bounds
-* CI, Dependabot, Make targets, GoReleaser arm64/x86_64 archives, checksums,
+* Local Make targets, GoReleaser arm64/x86_64 archives, checksums,
   contribution guidance, security policy, and metric provenance documentation
 
 ### Changed
@@ -77,8 +68,9 @@ native Apple silicon telemetry, and agent-friendly exports.
 
 ### Removed
 
-* The committed, stale, arm64-only executable; release artifacts are generated
-  from tags instead
+* GitHub Actions workflows, Dependabot scheduling, and CI signing setup
+* Automatic release publishing and signing/notarization hooks
+* The committed, stale, arm64-only executable; builds and archives are made locally
 * Invented Low/Medium/High “memory pressure percentage” thresholds
 * Repeated full host/process scans on every one-second refresh
 
@@ -122,27 +114,27 @@ Expanded system visibility and improved robustness of data collection and UI ref
 
 ## [0.1.0] – 2025-10-27
 
-Initial release 
+Initial release
 
-### Added 
+### Added
 
-* First usable version of `macos-health` 
-* Terminal-based system health dashboard for macOS 
-* Non-blocking TUI built with Bubble Tea 
-* CPU usage calculated from deltas (no blocking sleeps) 
-* Load average reporting (1m / 5m / 15m) 
-* Memory usage with macOS-style memory pressure: 
+* First usable version of `macos-health`
+* Terminal-based system health dashboard for macOS
+* Non-blocking TUI built with Bubble Tea
+* CPU usage calculated from deltas (no blocking sleeps)
+* Load average reporting (1m / 5m / 15m)
+* Memory usage with macOS-style memory pressure:
 
-  * Low (< 75%) 
-  * Medium (75–90%) 
-  * High (> 90%) 
-* Swap usage reporting 
-* Disk usage for the root volume 
-* Network throughput for the active interface only 
-* Battery percentage, charge state, and estimated time remaining 
-* System uptime display 
-* Top processes by CPU and memory usage 
-* Context-aware data collection with timeouts so slow syscalls don’t freeze the UI 
+  * Low (< 75%)
+  * Medium (75–90%)
+  * High (> 90%)
+* Swap usage reporting
+* Disk usage for the root volume
+* Network throughput for the active interface only
+* Battery percentage, charge state, and estimated time remaining
+* System uptime display
+* Top processes by CPU and memory usage
+* Context-aware data collection with timeouts so slow syscalls don’t freeze the UI
 
-Everything refreshes once per second 
-If something stalls, it gets skipped 
+Everything refreshes once per second
+If something stalls, it gets skipped

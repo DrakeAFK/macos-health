@@ -6,9 +6,6 @@ builds:
   - id: macos-health
     main: .
     binary: macos-health
-    hooks:
-      post:
-        - sh scripts/sign-binary.sh "{{ .Path }}"
     goos:
       - darwin
     goarch:
@@ -61,6 +58,7 @@ archives:
       - CHANGELOG.md
       - SECURITY.md
       - THIRD_PARTY_NOTICES.md
+      - docs/metrics.md
       - docs/licenses/*
       - completions/*
 
@@ -78,4 +76,5 @@ changelog:
       - '^Merge '
 
 release:
-  prerelease: auto
+  # Package locally. Uploading a release is a separate, manual step.
+  disable: true
