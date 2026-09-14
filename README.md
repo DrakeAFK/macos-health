@@ -167,6 +167,14 @@ snapshot rather than trying to open an interactive TUI.
 output. Exit status is `0` on success, `1` when required telemetry or execution
 fails, and `2` for invalid command-line usage.
 
+For local captures, use the ignored `recordings/` directory:
+
+```sh
+mkdir -p recordings
+macos-health --record recordings/slow-build.macos-health.ndjson
+macos-health --replay recordings/slow-build.macos-health.ndjson
+```
+
 ## Dashboard pages
 
 ### Overview

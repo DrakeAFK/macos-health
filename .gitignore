@@ -35,5 +35,11 @@ go.work.sum
 /macos-health
 /dist/
 
+# Local diagnostic captures. Keep recordings outside source control; they may
+# contain process names, PIDs, host identity, listener addresses, and metrics.
+/recordings/
+/.macos-health/
+*.macos-health.ndjson
+
 # macOS filesystem metadata
 .DS_Store
